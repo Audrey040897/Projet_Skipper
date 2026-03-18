@@ -1,4 +1,10 @@
 # Byte-compiled / optimized / DLL files
+Data_SNDT/
+models/
+*.npz
+*.pt
+*.pth
+env/
 __pycache__/
 *.py[codz]
 *$py.class
