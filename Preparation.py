@@ -143,10 +143,36 @@ def preprocess(img: np.ndarray, global_min: list, global_max: list,
 # 4. Étape 2 : Conversion NPZ → .pt avec normalisation globale
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Taille cible après resize
+# 128px : trop petit pour T2 (1px ≈ 1.4m → MAE < 1m impossible)
+# 256px : 1px ≈ 0.7m → précision suffisante pour MAE < 1m
+TARGET_SIZE = 256
+
+
+def resize_tensor(img: np.ndarray, target: int = TARGET_SIZE) -> np.ndarray:
+    """
+    Redimensionne (4, H, W) en conservant le ratio d'aspect.
+    La plus grande dimension est ramenée à target px.
+    Utilise une interpolation bilinéaire simple via numpy.
+    """
+    import cv2   # pip install opencv-python
+    C, H, W = img.shape
+    scale   = target / max(H, W)
+    new_h   = max(1, int(H * scale))
+    new_w   = max(1, int(W * scale))
+
+    resized = np.zeros((C, new_h, new_w), dtype=np.float32)
+    for c in range(C):
+        resized[c] = cv2.resize(img[c], (new_w, new_h),
+                                interpolation=cv2.INTER_LINEAR)
+    return resized
+
+
 def convert_to_pt(filenames: list, npz_dir: str,
                   out_dir: str, stats: dict) -> list:
     """
-    Convertit chaque NPZ en tenseur .pt normalisé globalement.
+    Convertit chaque NPZ en tenseur .pt normalisé ET redimensionné.
+    Les tenseurs sont stockés à TARGET_SIZE px max → ultra rapides à charger.
 
     Returns:
         Liste des noms de fichiers .pt créés avec succès
@@ -157,7 +183,7 @@ def convert_to_pt(filenames: list, npz_dir: str,
     global_min = stats['global_min']
     global_max = stats['global_max']
 
-    print(f"\n[Étape 2/2] Conversion NPZ → .pt normalisés...")
+    print(f"\n[Étape 2/2] Conversion NPZ → .pt normalisés + resize {TARGET_SIZE}px...")
     print(f"  Dossier sortie : {tensors_dir}\n")
 
     success = []
@@ -174,9 +200,10 @@ def convert_to_pt(filenames: list, npz_dir: str,
             continue
 
         try:
-            img = load_npz_raw(npz_path)
-            img = preprocess(img, global_min, global_max)
-            tensor = torch.from_numpy(img)          # (4, H, W) float32
+            img = load_npz_raw(npz_path)              # (4, H, W) float32 avec NaN
+            img = preprocess(img, global_min, global_max)  # NaN→0, normalisation
+            img = resize_tensor(img, TARGET_SIZE)     # resize → (4, ≤128, ≤128)
+            tensor = torch.from_numpy(img)            # (4, H', W') float32
             torch.save(tensor, pt_path)
             success.append(pt_name)
 
@@ -337,7 +364,7 @@ def prepare(csv_path: str, npz_dir: str, out_dir: str):
 if __name__ == '__main__':
 
     # ══════════════════════════════════════════════════════════
-    # CHEMINS
+    # ⚠️  MODIFIEZ CES 3 CHEMINS
     # ══════════════════════════════════════════════════════════
     CSV_PATH = r"D:/Projet_skipper_RNDT/Projet_Skipper/Data_NDT/Training_database_float16/pipe_presence_width_detection_label.csv"
     NPZ_DIR  = r"D:/Projet_skipper_RNDT/Projet_Skipper/Data_NDT/Training_database_float16/"
