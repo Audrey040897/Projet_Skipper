@@ -1,0 +1,103 @@
+fichier;T1_conduite;T1_probabilite;T1_label;T2_largeur_m;T4_parallel;T4_probabilite;T4_label
+real_data_00000.npz;1;1.0;Conduite détectée;19.24;1.0;1.0;Conduites parallèles
+real_data_00001.npz;1;1.0;Conduite détectée;13.49;1.0;1.0;Conduites parallèles
+real_data_00002.npz;1;1.0;Conduite détectée;22.13;1.0;1.0;Conduites parallèles
+real_data_00003.npz;1;1.0;Conduite détectée;26.73;1.0;1.0;Conduites parallèles
+real_data_00004.npz;1;1.0;Conduite détectée;16.1;0.0;0.0;Conduite simple
+real_data_00005.npz;1;1.0;Conduite détectée;2.0;0.0;0.0;Conduite simple
+real_data_00006.npz;1;1.0;Conduite détectée;13.7;0.0;0.0;Conduite simple
+real_data_00007.npz;1;1.0;Conduite détectée;13.06;0.0;0.0;Conduite simple
+real_data_00008.npz;1;1.0;Conduite détectée;11.72;1.0;1.0;Conduites parallèles
+real_data_00009.npz;1;1.0;Conduite détectée;40.3;1.0;0.987;Conduites parallèles
+real_data_00010.npz;1;1.0;Conduite détectée;19.21;0.0;0.0;Conduite simple
+real_data_00011.npz;1;1.0;Conduite détectée;16.06;0.0;0.0;Conduite simple
+real_data_00012.npz;1;1.0;Conduite détectée;18.74;0.0;0.0;Conduite simple
+real_data_00013.npz;1;1.0;Conduite détectée;37.77;0.0;0.0;Conduite simple
+real_data_00014.npz;1;1.0;Conduite détectée;21.02;1.0;1.0;Conduites parallèles
+real_data_00015.npz;1;1.0;Conduite détectée;16.51;1.0;1.0;Conduites parallèles
+real_data_00016.npz;1;1.0;Conduite détectée;59.26;0.0;0.0;Conduite simple
+real_data_00017.npz;1;1.0;Conduite détectée;34.65;0.0;0.0001;Conduite simple
+real_data_00018.npz;1;1.0;Conduite détectée;25.01;1.0;0.9773;Conduites parallèles
+real_data_00019.npz;1;1.0;Conduite détectée;15.35;0.0;0.0;Conduite simple
+real_data_00020.npz;1;1.0;Conduite détectée;18.44;1.0;1.0;Conduites parallèles
+real_data_00021.npz;1;1.0;Conduite détectée;43.36;1.0;1.0;Conduites parallèles
+real_data_00022.npz;1;1.0;Conduite détectée;64.89;0.0;0.0;Conduite simple
+real_data_00023.npz;1;1.0;Conduite détectée;32.3;0.0;0.0;Conduite simple
+real_data_00024.npz;1;1.0;Conduite détectée;11.91;0.0;0.0;Conduite simple
+real_data_00025.npz;1;1.0;Conduite détectée;81.38;0.0;0.0;Conduite simple
+real_data_00026.npz;1;0.7665;Conduite détectée;42.62;1.0;0.8725;Conduites parallèles
+real_data_00027.npz;1;1.0;Conduite détectée;43.51;0.0;0.0;Conduite simple
+real_data_00028.npz;1;1.0;Conduite détectée;13.93;1.0;1.0;Conduites parallèles
+real_data_00029.npz;1;1.0;Conduite détectée;24.1;1.0;1.0;Conduites parallèles
+real_data_00030.npz;1;1.0;Conduite détectée;33.11;0.0;0.0;Conduite simple
+real_data_00031.npz;1;1.0;Conduite détectée;38.9;0.0;0.0;Conduite simple
+real_data_00032.npz;1;1.0;Conduite détectée;19.47;1.0;1.0;Conduites parallèles
+real_data_00033.npz;1;1.0;Conduite détectée;21.52;0.0;0.0;Conduite simple
+real_data_00034.npz;1;1.0;Conduite détectée;11.2;1.0;1.0;Conduites parallèles
+real_data_00035.npz;1;1.0;Conduite détectée;17.76;1.0;1.0;Conduites parallèles
+real_data_00036.npz;1;1.0;Conduite détectée;16.62;1.0;0.9545;Conduites parallèles
+real_data_00037.npz;1;1.0;Conduite détectée;11.5;1.0;1.0;Conduites parallèles
+real_data_00038.npz;1;1.0;Conduite détectée;12.01;1.0;0.9156;Conduites parallèles
+real_data_00039.npz;1;1.0;Conduite détectée;31.49;0.0;0.0;Conduite simple
+real_data_00040.npz;1;1.0;Conduite détectée;14.8;1.0;1.0;Conduites parallèles
+real_data_00041.npz;1;1.0;Conduite détectée;21.96;1.0;1.0;Conduites parallèles
+real_data_00042.npz;1;1.0;Conduite détectée;18.37;0.0;0.0;Conduite simple
+real_data_00043.npz;1;1.0;Conduite détectée;17.82;0.0;0.0;Conduite simple
+real_data_00044.npz;1;1.0;Conduite détectée;23.19;1.0;1.0;Conduites parallèles
+real_data_00045.npz;1;1.0;Conduite détectée;21.48;1.0;1.0;Conduites parallèles
+real_data_00046.npz;1;1.0;Conduite détectée;10.36;1.0;1.0;Conduites parallèles
+real_data_00047.npz;1;1.0;Conduite détectée;25.48;1.0;1.0;Conduites parallèles
+real_data_00048.npz;1;1.0;Conduite détectée;21.96;0.0;0.0;Conduite simple
+real_data_00049.npz;1;1.0;Conduite détectée;14.62;1.0;1.0;Conduites parallèles
+real_data_00050.npz;1;1.0;Conduite détectée;14.75;1.0;1.0;Conduites parallèles
+real_data_no_pipe_00000.npz;0;0.0;Aucune conduite;32.38;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00001.npz;0;0.0;Aucune conduite;28.32;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00002.npz;0;0.0;Aucune conduite;68.18;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00003.npz;0;0.0;Aucune conduite;35.63;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00004.npz;0;0.0;Aucune conduite;54.2;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00005.npz;0;0.0;Aucune conduite;85.95;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00006.npz;0;0.0;Aucune conduite;54.12;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00007.npz;0;0.0;Aucune conduite;51.87;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00008.npz;0;0.3808;Aucune conduite;28.02;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00009.npz;0;0.0;Aucune conduite;31.12;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00010.npz;0;0.0;Aucune conduite;32.27;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00011.npz;0;0.0;Aucune conduite;50.76;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00012.npz;0;0.3873;Aucune conduite;37.69;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00013.npz;0;0.0;Aucune conduite;55.77;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00014.npz;0;0.0;Aucune conduite;28.27;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00015.npz;0;0.0;Aucune conduite;23.33;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00016.npz;0;0.0;Aucune conduite;30.26;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00017.npz;1;0.7474;Conduite détectée;39.03;0.0;0.0;Conduite simple
+real_data_no_pipe_00018.npz;0;0.0;Aucune conduite;40.58;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00019.npz;0;0.0;Aucune conduite;27.98;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00020.npz;0;0.0;Aucune conduite;24.63;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00021.npz;0;0.0;Aucune conduite;42.68;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00022.npz;1;0.6218;Conduite détectée;30.39;0.0;0.0;Conduite simple
+real_data_no_pipe_00023.npz;0;0.0;Aucune conduite;89.61;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00024.npz;0;0.0;Aucune conduite;46.58;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00025.npz;1;0.7171;Conduite détectée;24.38;0.0;0.0;Conduite simple
+real_data_no_pipe_00026.npz;0;0.0;Aucune conduite;31.3;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00027.npz;0;0.0;Aucune conduite;28.7;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00028.npz;0;0.0;Aucune conduite;52.94;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00029.npz;0;0.0;Aucune conduite;27.77;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00030.npz;0;0.0;Aucune conduite;39.69;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00031.npz;0;0.0;Aucune conduite;123.59;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00032.npz;0;0.0;Aucune conduite;64.04;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00033.npz;0;0.0;Aucune conduite;83.65;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00034.npz;0;0.0;Aucune conduite;53.03;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00035.npz;0;0.3397;Aucune conduite;43.2;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00036.npz;0;0.0;Aucune conduite;28.18;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00037.npz;0;0.0;Aucune conduite;29.05;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00038.npz;0;0.0;Aucune conduite;45.66;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00039.npz;0;0.0;Aucune conduite;45.51;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00040.npz;0;0.0;Aucune conduite;31.83;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00041.npz;0;0.0;Aucune conduite;36.35;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00042.npz;0;0.0;Aucune conduite;25.71;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00043.npz;0;0.0;Aucune conduite;32.44;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00044.npz;0;0.0;Aucune conduite;25.75;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00045.npz;0;0.0;Aucune conduite;29.88;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00046.npz;0;0.0;Aucune conduite;35.65;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00047.npz;0;0.0;Aucune conduite;22.72;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00048.npz;1;0.7127;Conduite détectée;28.69;0.0;0.0;Conduite simple
+real_data_no_pipe_00049.npz;0;0.0;Aucune conduite;66.79;;;N/A (aucune conduite détectée)
+real_data_no_pipe_00050.npz;0;0.0;Aucune conduite;30.75;;;N/A (aucune conduite détectée)
