@@ -3,6 +3,7 @@
 Data_NDT/
 models/
 cache_pt/
+Data_t3/
 *.pt
 *.npz
 *.dll

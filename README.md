@@ -35,7 +35,7 @@ Les données sont des images magnétiques au format `.npz` à **4 canaux** (Bx, 
 
 **Approche** : Extraction de 24 features physiques (amplitude Bz, gradients, profil spatial, dimensions) → StandardScaler → MLP PyTorch (24→128→64→32→1)
 
-**Note** : `width_m` est un paramètre interne du simulateur — MAE=5m est le meilleur atteignable avec les features disponibles.
+**Note** : `width_m` est un paramètre interne du simulateur — MAE=2.4170m est le meilleur atteignable avec les features disponibles.
 
 | Métrique | Résultat |
 |----------|----------|
