@@ -1,28 +1,23 @@
 """
-model_t4.py — Skipper NDT — Tâche 4 : Conduites parallèles
-============================================================
-Pipeline : Image .pt → Resize 64px → CNN → Classification binaire
+model_t2.py — Skipper NDT — Tâche 2 : Largeur de la carte magnétique
+======================================================================
+Régression de width_m à partir de features physiques extraites des NPZ.
 
-Classes :
-  0 = single    (conduite simple)   — 1200 images
-  1 = parallel  (conduites doubles) —  500 images
+Pipeline :
+  NPZ → features physiques (24 features) → StandardScaler → MLP PyTorch
 
-Le CNN apprend directement la forme du profil magnétique :
-  - single   : 1 pic gaussien  → signature symétrique
-  - parallel : 2 pics proches  → signature bimodale / élargie
+Architecture MLP :
+  Linear(24→128) → ReLU → Dropout(0.3)
+  Linear(128→64) → ReLU → Dropout(0.2)
+  Linear(64→32)  → ReLU
+  Linear(32→1)   → régression
 
-Objectif : F1 > 0.80
+Objectif : MAE < 1m
 
-Différences vs T1 :
-  - Dataset filtré : uniquement images avec conduite (label==1)
-  - Déséquilibre 2.4:1 → WeightedRandomSampler + pos_weight
-  - Métrique principale : F1 (pas Recall)
-  - 4 canaux utilisés (Bx, By, Bz, Norme) pour capturer la forme 2D
-
-Fichiers générés :
-  training_curves_t4.png   — Loss + F1/Accuracy Train vs Val
-  model_t4.pt              — poids CNN
-  model_t4_checkpoint.pt   — checkpoint reprise
+Fichiers sauvegardés :
+  task2_model.pth     — poids du MLP
+  task2_scaler.pkl    — StandardScaler
+  training_curves_t2.png
 """
 
 import os
@@ -30,447 +25,376 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader, Subset, WeightedRandomSampler
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, recall_score, f1_score, classification_report
+from sklearn.metrics import mean_absolute_error
+from sklearn.preprocessing import StandardScaler
 import joblib
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from tqdm import tqdm
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. Dataset
+# Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
-class DatasetT4(Dataset):
+DATA_DIR   = r"D:/Projet_skipper_RNDT/Projet_Skipper/Data_NDT/Training_database_float16"
+CSV_PATH   = r"D:/Projet_skipper_RNDT/Projet_Skipper/Data_NDT/Training_database_float16/pipe_presence_width_detection_label.csv"
+OUTPUT_DIR = r"D:/Projet_skipper_RNDT/Projet_Skipper/models"
+SEED       = 42
+EPOCHS     = 300
+BATCH_SIZE = 32
+LR         = 1e-3
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Extraction de features physiques
+# ─────────────────────────────────────────────────────────────────────────────
+
+def extract_features(file_path: str) -> list:
     """
-    Charge les .pt du cache pour la Tâche 4.
-    Uniquement les images avec conduite (label==1).
-    Label T4 : 1 si pipe_type=='parallel', 0 si 'single'.
+    Extrait 24 features physiques depuis un fichier NPZ.
+    Ces features décrivent la forme du signal magnétique
+    pour prédire width_m.
     """
+    raw  = np.load(file_path)['data']
+    data = raw.astype(np.float32)          # float16 → float32 avant nan_to_num
+    data = np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
 
-    def __init__(self, manifest_path: str, cache_dir: str):
-        self.cache_dir = cache_dir
-        df = pd.read_csv(manifest_path)
-        if 'field_file' in df.columns:
-            df = df.rename(columns={'field_file': 'filename'})
+    Bx   = data[:, :, 0]
+    By   = data[:, :, 1]
+    Bz   = data[:, :, 2]
+    Norm = data[:, :, 3]
+    mask = Norm > 0
 
-        # Filtrer : uniquement images avec conduite
-        df = df[df['label'] == 1].reset_index(drop=True)
+    features = {}
 
-        # Label T4
-        df['label_t4'] = (df['pipe_type'] == 'parallel').astype(int)
+    # Features globales Norm
+    norm_valid = Norm[mask]
+    features['norm_max']    = float(norm_valid.max())
+    features['norm_mean']   = float(norm_valid.mean())
+    features['norm_std']    = float(norm_valid.std())
+    features['norm_median'] = float(np.median(norm_valid))
 
-        self.df   = df
-        n_par = int((df['label_t4'] == 1).sum())
-        n_sin = int((df['label_t4'] == 0).sum())
-        print(f"[DatasetT4] {len(df)} échantillons | "
-              f"parallel={n_par}  single={n_sin}  "
-              f"(déséquilibre {n_sin/n_par:.1f}:1)")
+    # Features globales Bz
+    bz_valid = Bz[mask]
+    features['bz_max']   = float(bz_valid.max())
+    features['bz_mean']  = float(bz_valid.mean())
+    features['bz_std']   = float(bz_valid.std())
+    features['bz_range'] = float(bz_valid.max() - bz_valid.min())
 
-    def __len__(self): return len(self.df)
+    # Features globales Bx
+    bx_valid = Bx[mask]
+    features['bx_max']   = float(bx_valid.max())
+    features['bx_std']   = float(bx_valid.std())
+    features['bx_range'] = float(bx_valid.max() - bx_valid.min())
 
-    def get_labels(self): return self.df['label_t4'].tolist()
+    # Features globales By
+    by_valid = By[mask]
+    features['by_max']   = float(by_valid.max())
+    features['by_std']   = float(by_valid.std())
+    features['by_range'] = float(by_valid.max() - by_valid.min())
 
-    def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        pt  = os.path.join(self.cache_dir,
-                           str(row['pt_file']).replace('\\', '/'))
-        img = torch.load(pt, weights_only=True)   # (4, H, W)
-        return {
-            'image'   : img,
-            'label'   : torch.tensor(int(row['label_t4']), dtype=torch.long),
-            'filename': row['filename'],
-        }
+    # Dimensions spatiales
+    features['n_valid_pixels'] = float(mask.sum())
+    features['height']         = float(data.shape[0])
+    features['width_pixels']   = float(data.shape[1])
+    features['aspect_ratio']   = float(data.shape[0] / (data.shape[1] + 1e-6))
 
+    # Profil moyen
+    col_means = Norm.mean(axis=0)
+    row_means = Norm.mean(axis=1)
+    features['profile_width_cols'] = float((col_means > col_means.max() * 0.5).sum())
+    features['profile_width_rows'] = float((row_means > row_means.max() * 0.5).sum())
 
-def collate_fn(batch):
-    """Resize + padding adaptatif."""
-    MAX_SIZE = 128  # résolution pour T4 — plus grande que T1 pour capturer la forme
+    # Gradient spatial
+    grad_x = np.gradient(Norm, axis=1)
+    grad_y = np.gradient(Norm, axis=0)
+    grad_m = np.sqrt(grad_x**2 + grad_y**2)
+    features['grad_mean'] = float(grad_m[mask].mean())
+    features['grad_max']  = float(grad_m[mask].max())
 
-    def resize(img):
-        _, h, w = img.shape
-        if max(h, w) <= MAX_SIZE:
-            return img
-        scale = MAX_SIZE / max(h, w)
-        nh, nw = max(1, int(h*scale)), max(1, int(w*scale))
-        return nn.functional.interpolate(
-            img.unsqueeze(0).float(), size=(nh, nw),
-            mode='bilinear', align_corners=False).squeeze(0)
+    # Ratio couverture + dimensions physiques
+    features['coverage_ratio'] = float(mask.mean())
+    features['height_m']       = float(data.shape[0] * 0.2)
+    features['width_pixels_m'] = float(data.shape[1] * 0.2)
 
-    images = [resize(item['image']) for item in batch]
-    max_h  = max(img.shape[1] for img in images)
-    max_w  = max(img.shape[2] for img in images)
-    padded = [nn.functional.pad(img, (0, max_w-img.shape[2],
-                                       0, max_h-img.shape[1]))
-              for img in images]
-    return {
-        'image'   : torch.stack(padded),
-        'label'   : torch.stack([b['label'] for b in batch]),
-        'filename': [b['filename'] for b in batch],
-    }
+    return list(features.values())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. Architecture CNN
+# 2. Architecture MLP
 # ─────────────────────────────────────────────────────────────────────────────
 
-class ConvBlock(nn.Module):
-    def __init__(self, in_ch, out_ch, stride=1):
+class WidthMLP(nn.Module):
+    """MLP pour régression sur features physiques."""
+    def __init__(self, n_features: int):
         super().__init__()
-        self.block = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=1, bias=False),
-            nn.BatchNorm2d(out_ch),
-            nn.ReLU(inplace=True),
+        self.net = nn.Sequential(
+            nn.Linear(n_features, 128), nn.ReLU(), nn.Dropout(0.3),
+            nn.Linear(128, 64),         nn.ReLU(), nn.Dropout(0.2),
+            nn.Linear(64, 32),          nn.ReLU(),
+            nn.Linear(32, 1),
         )
-    def forward(self, x): return self.block(x)
-
-
-class ModelT4(nn.Module):
-    """
-    CNN pour Tâche 4 — single vs parallel.
-
-    Architecture légère + forte régularisation pour éviter l'overfitting.
-    Le dataset est petit (1275 images) → moins de params + dropout fort.
-
-    Entrée : (B, 4, H, W) — 4 canaux magnétiques
-    Sortie : (B, 1)        — logit binaire
-    """
-
-    def __init__(self, in_channels=4, dropout=0.6):
-        super().__init__()
-        self.backbone = nn.Sequential(
-            ConvBlock(in_channels, 16,  stride=2),   # /2
-            ConvBlock(16,          32,  stride=2),   # /4
-            ConvBlock(32,          64,  stride=2),   # /8
-            ConvBlock(64,          128, stride=2),   # /16
-        )
-        self.gap  = nn.AdaptiveAvgPool2d(1)
-        self.head = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout),
-            nn.Linear(64, 1),
-        )
-        self._init_weights()
-
-    def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight)
-                nn.init.constant_(m.bias, 0)
-
     def forward(self, x):
-        return self.head(self.gap(self.backbone(x)).flatten(1))
+        return self.net(x).squeeze(1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. Évaluation
-# ─────────────────────────────────────────────────────────────────────────────
-
-@torch.no_grad()
-def evaluate(model, loader, device, threshold=0.5):
-    model.eval()
-    preds, labs = [], []
-    for batch in loader:
-        imgs  = batch['image'].to(device)
-        probs = torch.sigmoid(model(imgs)).squeeze(1).cpu().numpy()
-        preds.extend((probs >= threshold).astype(int))
-        labs.extend(batch['label'].numpy())
-    p, l = np.array(preds), np.array(labs)
-    return {
-        'accuracy': float(accuracy_score(l, p)),
-        'recall'  : float(recall_score(l, p, zero_division=0, pos_label=1)),
-        'f1'      : float(f1_score(l, p, zero_division=0, pos_label=1)),
-    }
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. Courbes
+# 3. Courbes d'entraînement
 # ─────────────────────────────────────────────────────────────────────────────
 
 def plot_curves(history: dict, output_dir: str):
-    """
-    Génère training_curves_t4.png :
-      Gauche : Loss (train)
-      Droit  : F1 + Accuracy Train vs Val + ligne objectif F1=0.80
-    """
-    ep = history['epoch']
-    if not ep:
-        return
+    BG, TEXT = '#0f1117', '#e2e8f0'
+    epochs_range = range(1, len(history['train_loss']) + 1)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    fig.patch.set_facecolor(BG)
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    fig.suptitle('Tâche 4 — CNN single vs parallel',
-                 fontsize=13, fontweight='bold')
+    def style(ax, title):
+        ax.set_facecolor('#1e2130')
+        ax.set_title(title, color=TEXT, fontsize=12, fontweight='bold')
+        ax.tick_params(colors=TEXT)
+        for sp in ax.spines.values(): sp.set_edgecolor('#374151')
+        ax.xaxis.label.set_color(TEXT)
+        ax.yaxis.label.set_color(TEXT)
+        ax.legend(facecolor='#1e2130', labelcolor=TEXT)
 
-    # Loss
-    axes[0].plot(ep, history['loss'], 'b-o', ms=3, lw=1.5, label='Train Loss')
-    axes[0].set_xlabel('Époque')
-    axes[0].set_ylabel('BCE Loss')
-    axes[0].set_title('Loss (train)')
-    axes[0].legend(fontsize=9)
-    axes[0].grid(True, alpha=0.3)
+    axes[0].plot(epochs_range, history['train_loss'], color='#3b82f6',
+                 label='Train Loss', linewidth=2)
+    axes[0].plot(epochs_range, history['val_loss'],   color='#ef4444',
+                 label='Val Loss',   linewidth=2)
+    style(axes[0], 'Loss (SmoothL1)')
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('Loss')
 
-    # F1 + Accuracy
-    ax = axes[1]
-    ax.plot(ep, history['train_f1'],  'g-o',  ms=3, lw=1.5, label='Train F1')
-    ax.plot(ep, history['val_f1'],    'g--s', ms=3, lw=1.5, label='Val F1')
-    ax.plot(ep, history['train_acc'], 'b-o',  ms=3, lw=1.5, label='Train Acc',
-            alpha=0.6)
-    ax.plot(ep, history['val_acc'],   'b--s', ms=3, lw=1.5, label='Val Acc',
-            alpha=0.6)
-    ax.axhline(0.80, color='green', lw=1.5, linestyle=':',
-               label='Objectif F1 0.80')
-    ax.set_xlabel('Époque')
-    ax.set_ylabel('Score')
-    ax.set_title('F1 & Accuracy — Train vs Val')
-    ax.set_ylim(0, 1.05)
-    ax.legend(fontsize=8, loc='lower right')
-    ax.grid(True, alpha=0.3)
+    axes[1].plot(epochs_range, history['train_mae'], color='#3b82f6',
+                 label='Train MAE', linewidth=2)
+    axes[1].plot(epochs_range, history['val_mae'],   color='#ef4444',
+                 label='Val MAE',   linewidth=2)
+    axes[1].axhline(1.0, color='#10b981', linestyle='--', linewidth=2,
+                    label='Objectif MAE < 1m')
+    style(axes[1], 'MAE (metres)')
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('MAE (m)')
 
+    fig.suptitle('Courbes Entraînement — MLP Tâche 2',
+                 color=TEXT, fontsize=14, fontweight='bold')
     plt.tight_layout()
-    os.makedirs(output_dir, exist_ok=True)
-    path = os.path.join(output_dir, 'training_curves_t4.png')
+    path = os.path.join(output_dir, 'training_curves_t2.png')
     plt.savefig(path, dpi=150, bbox_inches='tight')
     plt.close()
     print(f"  Courbes → {path}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. Entraînement
+# 4. Entraînement
 # ─────────────────────────────────────────────────────────────────────────────
 
-def train_t4(manifest_path: str, cache_dir: str, output_dir: str,
-             n_epochs: int = 150, batch_size: int = 16, lr: float = 1e-4,
-             val_split: float = 0.15, test_split: float = 0.10,
-             seed: int = 42):
-    """
-    Entraîne le CNN pour la Tâche 4 (single vs parallel).
-
-    Génère :
-      training_curves_t4.png   Loss + F1/Accuracy Train vs Val
-      model_t4.pt              meilleur modèle
-    """
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    os.makedirs(output_dir, exist_ok=True)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+def train_t2():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     print(f"\n{'='*55}")
-    print("ENTRAÎNEMENT T4 — CNN single vs parallel")
-    print(f"  Device : {device}")
+    print("ENTRAÎNEMENT T2 — Features physiques + MLP")
+    print(f"  Device : {DEVICE}")
     print(f"{'='*55}")
 
-    # ── Dataset + split ───────────────────────────────────────────────────
-    ds     = DatasetT4(manifest_path, cache_dir)
-    labels = ds.get_labels()
-    n      = len(ds)
+    # Chargement CSV — label=1 uniquement
+    df = pd.read_csv(CSV_PATH, sep=';')
+    if 'field_file' in df.columns:
+        df = df.rename(columns={'field_file': 'filename'})
+    df_t2 = df[df['label'] == 1].reset_index(drop=True)
+    print(f"\nDataset T2 : {len(df_t2)} échantillons")
+    print(f"width_m    : {df_t2['width_m'].min():.1f}m → "
+          f"{df_t2['width_m'].max():.1f}m  "
+          f"(moy={df_t2['width_m'].mean():.1f}m)")
 
-    train_idx, temp_idx = train_test_split(
-        list(range(n)), test_size=val_split+test_split,
-        random_state=seed, stratify=labels)
-    val_idx, test_idx = train_test_split(
-        temp_idx, test_size=test_split/(val_split+test_split),
-        random_state=seed, stratify=[labels[i] for i in temp_idx])
+    # Extraction features
+    print("\nExtraction des features physiques...")
+    X_list, y_list = [], []
+    for i, row in df_t2.iterrows():
+        fpath = os.path.join(DATA_DIR, row['filename'])
+        try:
+            X_list.append(extract_features(fpath))
+            y_list.append(float(row['width_m']))
+        except Exception as e:
+            print(f"  ✗ {row['filename']} : {e}")
+        if len(X_list) % 200 == 0 and len(X_list) > 0:
+            print(f"  {len(X_list)}/{len(df_t2)} traités...")
 
-    print(f"Split : Train={len(train_idx)}  Val={len(val_idx)}  Test={len(test_idx)}")
+    X = np.array(X_list, dtype=np.float32)
+    y = np.array(y_list, dtype=np.float32)
+    print(f"  Shape X : {X.shape}  ({X.shape[1]} features)")
 
-    # WeightedRandomSampler — compense le déséquilibre 2.4:1
-    train_labels  = [labels[i] for i in train_idx]
-    class_count   = np.bincount(train_labels)
-    sample_weight = (1.0 / class_count)[np.array(train_labels)]
-    sampler = WeightedRandomSampler(
-        torch.from_numpy(sample_weight).float(),
-        num_samples=len(train_idx), replacement=True)
+    # Split
+    X_train, X_temp, y_train, y_temp = train_test_split(
+        X, y, test_size=0.30, random_state=SEED)
+    X_val, X_test, y_val, y_test = train_test_split(
+        X_temp, y_temp, test_size=0.50, random_state=SEED)
+    print(f"Split : Train={len(X_train)} | Val={len(X_val)} | Test={len(X_test)}")
 
-    kw = dict(collate_fn=collate_fn, num_workers=0)
-    train_loader = DataLoader(Subset(ds, train_idx), batch_size=batch_size,
-                              sampler=sampler, **kw)
-    val_loader   = DataLoader(Subset(ds, val_idx),   batch_size=batch_size,
-                              shuffle=False, **kw)
-    test_loader  = DataLoader(Subset(ds, test_idx),  batch_size=batch_size,
-                              shuffle=False, **kw)
+    # StandardScaler
+    scaler  = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val   = scaler.transform(X_val)
+    X_test  = scaler.transform(X_test)
 
-    # ── Modèle ────────────────────────────────────────────────────────────
-    model = ModelT4(in_channels=4, dropout=0.6).to(device)
+    # DataLoaders
+    def make_loader(X_, y_, shuffle):
+        ds = TensorDataset(
+            torch.tensor(X_, dtype=torch.float32),
+            torch.tensor(y_, dtype=torch.float32))
+        return DataLoader(ds, batch_size=BATCH_SIZE, shuffle=shuffle)
 
-    n_pos = sum(train_labels)
-    n_neg = len(train_labels) - n_pos
-    pw    = torch.tensor([n_neg / n_pos], dtype=torch.float32).to(device)
-    criterion = nn.BCEWithLogitsLoss(pos_weight=pw)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-3)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', factor=0.5, patience=12)
+    train_loader = make_loader(X_train, y_train, shuffle=True)
+    val_loader   = make_loader(X_val,   y_val,   shuffle=False)
+    test_loader  = make_loader(X_test,  y_test,  shuffle=False)
 
-    print(f"CNN T4 : {sum(p.numel() for p in model.parameters()):,} params")
-    print(f"Train  : {n_pos} parallel / {n_neg} single  "
-          f"| pos_weight={pw.item():.2f}")
+    # Modèle
+    n_features = X_train.shape[1]
+    model      = WidthMLP(n_features).to(DEVICE)
+    criterion  = nn.SmoothL1Loss()
+    optimizer  = optim.Adam(model.parameters(), lr=LR, weight_decay=1e-4)
+    scheduler  = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, patience=10, factor=0.5)
+    print(f"MLP : {sum(p.numel() for p in model.parameters()):,} params")
 
-    # ── Historique ────────────────────────────────────────────────────────
-    history = {
-        'epoch': [], 'loss': [],
-        'train_f1': [], 'train_acc': [],
-        'val_f1':   [], 'val_acc':   [],
-    }
-    best_f1    = 0.0
-    best_path  = os.path.join(output_dir, 'model_t4.pt')
-    ckpt_path  = os.path.join(output_dir, 'model_t4_checkpoint.pt')
-    start_epoch = 1
+    # Entraînement
+    model_path    = os.path.join(OUTPUT_DIR, 'task2_model.pth')
+    best_val_loss = float('inf')
+    history       = {'train_loss':[], 'val_loss':[], 'train_mae':[], 'val_mae':[]}
 
-    if os.path.exists(ckpt_path):
-        ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-        model.load_state_dict(ckpt['model_state'])
-        optimizer.load_state_dict(ckpt['optimizer_state'])
-        start_epoch = ckpt['epoch'] + 1
-        best_f1     = ckpt['best_score']
-        history     = ckpt.get('history', history)
-        print(f"[Reprise] Époque {start_epoch}/{n_epochs}  F1={best_f1:.4f}")
+    print(f"\n{'Epoch':<8} {'Train Loss':<12} {'Val Loss':<12} "
+          f"{'Train MAE':<12} {'Val MAE (m)'}")
+    print("-" * 60)
 
-    # ── Boucle ────────────────────────────────────────────────────────────
-    for epoch in range(start_epoch, n_epochs + 1):
+    for epoch in range(1, EPOCHS + 1):
+        # Train
         model.train()
-        total_loss = 0.0
-        for batch in train_loader:
-            imgs = batch['image'].to(device)
-            lbl  = batch['label'].float().unsqueeze(1).to(device)
+        train_loss, tr_preds, tr_labels = 0.0, [], []
+        for xb, yb in train_loader:
+            xb, yb = xb.to(DEVICE), yb.to(DEVICE)
             optimizer.zero_grad()
-            loss = criterion(model(imgs), lbl)
+            out  = model(xb)
+            loss = criterion(out, yb)
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            total_loss += loss.item()
+            train_loss += loss.item() * xb.size(0)
+            tr_preds.extend(out.detach().cpu().numpy())
+            tr_labels.extend(yb.cpu().numpy())
+        train_loss /= len(train_loader.dataset)
+        train_mae   = mean_absolute_error(tr_labels, tr_preds)
 
-        avg_loss = total_loss / len(train_loader)
-        m_val    = evaluate(model, val_loader,   device)
-        m_train  = evaluate(model, train_loader, device)
-        scheduler.step(m_val['f1'])
+        # Val
+        model.eval()
+        val_loss, v_preds, v_labels = 0.0, [], []
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+                out     = model(xb)
+                loss    = criterion(out, yb)
+                val_loss += loss.item() * xb.size(0)
+                v_preds.extend(out.cpu().numpy())
+                v_labels.extend(yb.cpu().numpy())
+        val_loss /= len(val_loader.dataset)
+        val_mae   = mean_absolute_error(v_labels, v_preds)
+        scheduler.step(val_loss)
 
-        print(f"Ep {epoch:3d}/{n_epochs} | Loss={avg_loss:.4f} | "
-              f"Train F1={m_train['f1']:.3f} Acc={m_train['accuracy']:.3f} | "
-              f"Val   F1={m_val['f1']:.3f}  Acc={m_val['accuracy']:.3f}")
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), model_path)
+            saved = " ← sauvegardé"
+        else:
+            saved = ""
 
-        history['epoch'].append(epoch)
-        history['loss'].append(avg_loss)
-        history['train_f1'].append(m_train['f1'])
-        history['train_acc'].append(m_train['accuracy'])
-        history['val_f1'].append(m_val['f1'])
-        history['val_acc'].append(m_val['accuracy'])
+        history['train_loss'].append(train_loss)
+        history['val_loss'].append(val_loss)
+        history['train_mae'].append(train_mae)
+        history['val_mae'].append(val_mae)
 
-        if m_val['f1'] > best_f1:
-            best_f1 = m_val['f1']
-            torch.save(model.state_dict(), best_path)
-            print(f"  ✓ F1={best_f1:.4f}  Acc={m_val['accuracy']:.4f}")
+        if epoch % 10 == 0 or epoch == 1:
+            print(f"{epoch:<8} {train_loss:<12.4f} {val_loss:<12.4f} "
+                  f"{train_mae:<12.2f} {val_mae:.2f}m{saved}")
 
-        torch.save({'epoch': epoch, 'model_state': model.state_dict(),
-                    'optimizer_state': optimizer.state_dict(),
-                    'best_score': best_f1, 'history': history}, ckpt_path)
+    # Courbes
+    plot_curves(history, OUTPUT_DIR)
 
-    # ── Courbes ───────────────────────────────────────────────────────────
-    plot_curves(history, output_dir)
-
-    # ── Évaluation finale ─────────────────────────────────────────────────
-    print(f"\n--- Évaluation finale T4 (test set) ---")
-    model.load_state_dict(torch.load(best_path, weights_only=True))
-    m = evaluate(model, test_loader, device)
-
-    # Collecte probs pour classification_report
+    # Évaluation finale
+    print("\n--- ÉVALUATION FINALE (test set) ---")
+    model.load_state_dict(torch.load(model_path, map_location=DEVICE,
+                                     weights_only=True))
     model.eval()
-    all_preds, all_labs = [], []
+    all_preds, all_labels = [], []
     with torch.no_grad():
-        for batch in test_loader:
-            imgs  = batch['image'].to(device)
-            probs = torch.sigmoid(model(imgs)).squeeze(1).cpu().numpy()
-            all_preds.extend((probs >= 0.5).astype(int))
-            all_labs.extend(batch['label'].numpy())
+        for xb, yb in test_loader:
+            out = model(xb.to(DEVICE))
+            all_preds.extend(out.cpu().numpy())
+            all_labels.extend(yb.numpy())
+    mae = mean_absolute_error(all_labels, all_preds)
+    print(f"  {'✓' if mae < 1.0 else '✗'} MAE : {mae:.4f}m  (objectif < 1m)")
 
-    print(f"  {'✓' if m['f1']>0.80 else '✗'} F1 (parallel) : "
-          f"{m['f1']:.4f}  (> 0.80)")
-    print(f"  Accuracy : {m['accuracy']:.4f}")
-    print(f"  Recall   : {m['recall']:.4f}")
-    print()
-    print(classification_report(all_labs, all_preds,
-                                 target_names=['single', 'parallel']))
-    print(f"  → {best_path}")
-    return model
+    # Graphiques évaluation finale
+    all_preds_arr  = np.array(all_preds)
+    all_labels_arr = np.array(all_labels)
+    erreurs        = np.abs(all_preds_arr - all_labels_arr)
 
+    BG, TEXT = '#0f1117', '#e2e8f0'
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    fig.patch.set_facecolor(BG)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. Inférence
-# ─────────────────────────────────────────────────────────────────────────────
+    def style(ax, title):
+        ax.set_facecolor('#1e2130')
+        ax.set_title(title, color=TEXT, fontsize=12, fontweight='bold')
+        ax.tick_params(colors=TEXT)
+        for sp in ax.spines.values(): sp.set_edgecolor('#374151')
+        ax.xaxis.label.set_color(TEXT)
+        ax.yaxis.label.set_color(TEXT)
+        ax.legend(facecolor='#1e2130', labelcolor=TEXT)
 
-def predict_t4(npz_path: str, output_dir: str,
-               threshold: float = 0.5) -> dict:
-    """
-    Prédit si la conduite est simple ou parallèle.
-    À appeler uniquement si T1 a détecté une conduite.
+    # Scatter valeurs réelles vs prédites
+    axes[0].scatter(all_labels_arr, all_preds_arr,
+                    alpha=0.4, color='#3b82f6', s=15)
+    min_v = min(all_labels_arr.min(), all_preds_arr.min())
+    max_v = max(all_labels_arr.max(), all_preds_arr.max())
+    axes[0].plot([min_v, max_v], [min_v, max_v],
+                 color='#ef4444', linewidth=2, label='Parfait')
+    style(axes[0], 'Valeurs Reelles vs Predites')
+    axes[0].set_xlabel('Valeur réelle (m)')
+    axes[0].set_ylabel('Valeur prédite (m)')
 
-    Returns:
-        {'parallel': 0|1, 'probability': float, 'label': str}
-    """
-    device = torch.device('cpu')
-    model  = ModelT4(in_channels=4)
-    model.load_state_dict(torch.load(
-        os.path.join(output_dir, 'model_t4.pt'),
-        map_location=device, weights_only=True))
-    model.eval()
+    # Distribution des erreurs absolues
+    axes[1].hist(erreurs, bins=30, color='#3b82f6',
+                 edgecolor='white', linewidth=0.4, alpha=0.85)
+    axes[1].axvline(1.0, color='#ef4444', linestyle='--',
+                    linewidth=2, label='Objectif 1m')
+    axes[1].axvline(erreurs.mean(), color='#f59e0b', linestyle='--',
+                    linewidth=2, label=f'MAE = {erreurs.mean():.2f}m')
+    style(axes[1], 'Distribution des Erreurs Absolues')
+    axes[1].set_xlabel('Erreur absolue (m)')
+    axes[1].set_ylabel('Nombre')
 
-    # Charger + normaliser
-    data   = np.load(npz_path, allow_pickle=True)
-    arr    = data['data'].astype(np.float32)
-    img    = np.transpose(arr, (2, 0, 1))   # (4, H, W)
-    normed = np.zeros_like(img)
-    for c in range(4):
-        ch, valid = img[c], np.isfinite(img[c])
-        if valid.any():
-            cmin, cmax = ch[valid].min(), ch[valid].max()
-            rng = cmax - cmin
-            normed[c][valid] = 0.5 if rng < 1e-8 else (ch[valid]-cmin)/rng
+    fig.suptitle('Evaluation Finale — MLP Tache 2',
+                 color=TEXT, fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    eval_path = os.path.join(OUTPUT_DIR, 'evaluation_t2.png')
+    plt.savefig(eval_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  Graphique évaluation → {eval_path}")
 
-    # Resize 128px
-    t = torch.from_numpy(normed).unsqueeze(0).float()
-    t = nn.functional.interpolate(t, size=(128, 128),
-                                   mode='bilinear', align_corners=False)
-    with torch.no_grad():
-        prob = torch.sigmoid(model(t)).item()
-
-    return {
-        'parallel'   : int(prob >= threshold),
-        'probability': round(prob, 4),
-        'label'      : 'Conduites parallèles' if prob >= threshold
-                       else 'Conduite simple',
-    }
+    # Sauvegarde scaler
+    scaler_path = os.path.join(OUTPUT_DIR, 'task2_scaler.pkl')
+    joblib.dump(scaler, scaler_path)
+    print(f"  Modèle → {model_path}")
+    print(f"  Scaler → {scaler_path}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 7. Point d'entrée
+# Point d'entrée
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-
-    # ══════════════════════════════════════════════════════════
-    # ⚠️  MODIFIEZ CES CHEMINS
-    # ══════════════════════════════════════════════════════════
-    MANIFEST   = r"D:/Projet_skipper_RNDT/Projet_Skipper/cache_pt/manifest.csv"
-    CACHE_DIR  = r"D:/Projet_skipper_RNDT/Projet_Skipper/cache_pt/"
-    OUTPUT_DIR = r"D:/Projet_skipper_RNDT/Projet_Skipper/models/"
-    # ══════════════════════════════════════════════════════════
-
-    # Supprimer le checkpoint pour repartir :
-    # del models\model_t4_checkpoint.pt
-
-    train_t4(
-        manifest_path = MANIFEST,
-        cache_dir     = CACHE_DIR,
-        output_dir    = OUTPUT_DIR,
-        n_epochs      = 150,
-        batch_size    = 16,
-        lr            = 1e-4,
-    )
+    train_t2()
