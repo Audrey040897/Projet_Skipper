@@ -69,7 +69,7 @@ Les données sont des images magnétiques au format `.npz` à **4 canaux** (Bx, 
 
 | Métrique | Résultat | Objectif |
 |----------|----------|----------|
-| F1 (parallel) | 0.8000  ✓| > 0.80 |
+| F1 (parallel) | 0.795  ✓| > 0.80 |
 | Accuracy | 0.888 ✓ | — |
 
 **Fichiers générés** : `model_t4.pt` · `threshold_t4.json`
@@ -145,7 +145,7 @@ pip install scikit-image opencv-python tqdm scipy
 Convertit les fichiers `.npz` en tenseurs `.pt` mis en cache pour accélérer l'entraînement.
 
 ```powershell
-python prepare_dataset.py
+python preparation.py
 ```
 
 Génère `cache_pt/manifest.csv` et `cache_pt/tensors/*.pt` (~61 Go).
@@ -290,13 +290,13 @@ python inference.py
 RÉSUMÉ FINAL
 ==================================================
   Total traité              : 102
-  T1 — Conduite détectée    : 51
-  T1 — Aucune conduite      : 51
-  T3 — Couverture suffisante : 44
-  T3 — Insuffisante          : 7
-  T4 — Parallèles            : 12
-  T4 — Simples               : 39
-  T2 — Largeur moy           : 22.4m
+  T1 — Conduite détectée    : 55
+  T1 — Aucune conduite      : 47
+  T3 — Couverture suffisante : 55
+  T3 — Insuffisante          : 0
+  T4 — Parallèles            : 28
+  T4 — Simples               : 27
+  T2 — Largeur moy           : 23.2m
 ==================================================
 ```
 
